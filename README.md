@@ -16,6 +16,8 @@ Dans le tableur Drive : Fichier / télécharger / valeurs séparées par des vir
 
 ## Exercises modélisation d'un objet
 1. créer un diagramme mermaid pour décrire les réponses du formulaire Ex2a - All the Things You Do
+2. Utiliser l'outil mermaid.live : https://mermaid.live/
+3. inclure le diagramme dans le README.md de votre repository
 par exemple :
 
 ```mermaid
