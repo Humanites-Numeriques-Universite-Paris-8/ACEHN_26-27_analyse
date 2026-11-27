@@ -1,1 +1,112 @@
-Coucou
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Analyse ACEHN 2026–2027</title>
+	<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+	<style>
+		:root { font-family: system-ui, sans-serif; color: #17233a; background: #f3f6fb; }
+		* { box-sizing: border-box; }
+		body { margin: 0; }
+		main { max-width: 1200px; margin: auto; padding: 2rem 1rem; }
+		h1 { margin: 0 0 .4rem; }
+		.subtitle, .muted { color: #596980; }
+		.panel { background: white; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; box-shadow: 0 2px 12px #17233a0d; }
+		.controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
+		label { display: grid; gap: .35rem; font-weight: 600; }
+		input, select { font: inherit; padding: .55rem; border: 1px solid #b8c5d5; border-radius: 6px; min-width: 220px; max-width: 100%; }
+		#chart { overflow-x: auto; }
+		#chart svg { display: block; min-width: 500px; }
+		.table-wrap { overflow: auto; max-height: 600px; }
+		table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+		th, td { padding: .65rem; border-bottom: 1px solid #e4eaf2; text-align: left; vertical-align: top; }
+		th { position: sticky; top: 0; background: #edf2f8; white-space: nowrap; }
+		tr:hover td { background: #f7faff; }
+		.error { color: #a12121; }
+	</style>
+</head>
+<body>
+	<main>
+		<h1>Analyse ACEHN 2026–2027</h1>
+		<p class="subtitle">Exploration des données du fichier ACEHN26-27.csv</p>
+		<p id="status" role="status">Chargement des données…</p>
+		<div id="content" hidden>
+			<section class="panel controls" aria-label="Filtres">
+				<label>Rechercher dans les données <input id="search" type="search" placeholder="Saisir un mot…"></label>
+				<label>Colonne à visualiser <select id="column"></select></label>
+			</section>
+			<section class="panel">
+				<h2>Répartition des valeurs</h2>
+				<p class="muted">Nombre de lignes par valeur, limité aux 20 valeurs les plus fréquentes.</p>
+				<div id="chart"></div>
+			</section>
+			<section class="panel">
+				<h2>Données</h2>
+				<p id="table-info" class="muted"></p>
+				<div class="table-wrap"><table><thead></thead><tbody></tbody></table></div>
+			</section>
+		</div>
+	</main>
+	<script>
+		(async function () {
+			const status = d3.select('#status');
+			try {
+				// Détecter le séparateur parmi les formats CSV courants.
+				const text = await d3.text('data/ACEHN26-27.csv');
+				const header = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0];
+				const delimiters = [',', ';', '\t'];
+				const delimiter = delimiters.reduce((best, candidate) =>
+					d3.dsvFormat(candidate).parseRows(header)[0].length > d3.dsvFormat(best).parseRows(header)[0].length ? candidate : best
+				);
+				const rows = d3.dsvFormat(delimiter).parse(text.replace(/^\uFEFF/, ''));
+				const columns = rows.columns;
+				if (!columns.length || !columns[0]) throw new Error('Le fichier ne contient pas de colonnes.');
+
+				const select = d3.select('#column');
+				select.selectAll('option').data(columns).join('option').attr('value', d => d).text(d => d);
+				d3.select('thead').append('tr').selectAll('th').data(columns).join('th').attr('scope', 'col').text(d => d);
+				d3.select('#content').property('hidden', false);
+
+				function render() {
+					const query = d3.select('#search').property('value').trim().toLocaleLowerCase();
+					const column = select.property('value');
+					const filtered = rows.filter(row => !query || columns.some(key => (row[key] || '').toLocaleLowerCase().includes(query)));
+					status.text(`${filtered.length} ligne(s) sur ${rows.length}`);
+					d3.select('#table-info').text(`Affichage des ${Math.min(filtered.length, 100)} premières lignes.`);
+					d3.select('tbody').selectAll('tr').data(filtered.slice(0, 100)).join('tr')
+						.selectAll('td').data(row => columns.map(key => row[key] || '')).join('td').text(d => d);
+
+					const counts = Array.from(d3.rollup(filtered, group => group.length, row => (row[column] || '').trim() || '(vide)'),
+						([value, count]) => ({ value, count }))
+						.sort((a, b) => d3.descending(a.count, b.count) || d3.ascending(a.value, b.value)).slice(0, 20);
+					const chart = d3.select('#chart');
+					chart.selectAll('*').remove();
+					if (!counts.length) { chart.append('p').text('Aucune donnée à afficher.'); return; }
+					const width = Math.max(500, chart.node().clientWidth);
+					const margin = { top: 15, right: 45, bottom: 35, left: 180 };
+					const height = counts.length * 32 + margin.top + margin.bottom;
+					const x = d3.scaleLinear().domain([0, d3.max(counts, d => d.count)]).nice().range([margin.left, width - margin.right]);
+					const y = d3.scaleBand().domain(counts.map(d => d.value)).range([margin.top, height - margin.bottom]).padding(0.2);
+					const svg = chart.append('svg').attr('width', width).attr('height', height)
+						.attr('role', 'img').attr('aria-label', `Répartition de la colonne ${column}`);
+					svg.append('g').attr('transform', `translate(0,${height - margin.bottom})`).call(d3.axisBottom(x).ticks(5).tickFormat(d3.format('d')));
+					svg.append('g').attr('transform', `translate(${margin.left},0)`).call(d3.axisLeft(y).tickFormat(d => d.length > 23 ? d.slice(0, 22) + '…' : d))
+						.selectAll('.tick').append('title').text(d => d);
+					svg.append('g').selectAll('rect').data(counts).join('rect')
+						.attr('x', x(0)).attr('y', d => y(d.value)).attr('width', d => x(d.count) - x(0)).attr('height', y.bandwidth()).attr('fill', '#3976c6')
+						.append('title').text(d => `${d.value} : ${d.count}`);
+					svg.append('g').selectAll('text').data(counts).join('text')
+						.attr('x', d => x(d.count) + 5).attr('y', d => y(d.value) + y.bandwidth() / 2)
+						.attr('dominant-baseline', 'middle').attr('font-size', 12).text(d => d.count);
+				}
+				d3.select('#search').on('input', render);
+				select.on('change', render);
+				render();
+			} catch (error) {
+				status.attr('class', 'error').text(`Impossible de charger les données : ${error.message}. Vérifiez le fichier et ouvrez la page via un serveur web.`);
+			}
+		})();
+	</script>
+</body>
+</html>
