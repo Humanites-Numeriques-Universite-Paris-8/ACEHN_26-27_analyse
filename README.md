@@ -3,8 +3,7 @@ Projets pour le cours de Méthode et outils d'analyse
 
 ## Exercises
 
-1. créer une page Web
-mettre dans votre github une page index.html
+1. créer une page Web dans votre github = index.html
 2. créer un Google Form pour répondre à l'enquête Articial Inquiries : Ex2a - All the Things You Do
 3. mettre à disposition le google Form dans la page web
 cf. index.html de ce github.
